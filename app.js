@@ -1,11 +1,11 @@
 //jshint esversion:6
-//TEST GIT DIFF
+
 require('dotenv').config()
+const md5 = require('md5');
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
 
 
 //instantiate app
@@ -24,23 +24,6 @@ app.use(express.static("public"));
 
 /*--------SETUP DATABASES---------------*/
 
-// //connect to mongoose db
-// mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true});
-
-// //create user Schema
-// const userSchema = {
-//   email: String,
-//   password: String
-// };
-
-// //create model for user
-// const User = new mongoose.model("User", userSchema);
-
-
-
-
-/*--------ENCRYPT DATABASES---------------*/
-
 //connect to mongoose db
 mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true});
 
@@ -49,14 +32,6 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String
 });
-
-//should be added before creating the model
-//encrypt only password field
-//const secret = "Thisisourlittlesecret" -- to be added as an environment variable in the .env file
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });
-
-
-
 
 //create model for user
 const User = new mongoose.model("User", userSchema);
@@ -83,7 +58,7 @@ app.get("/login", function(req, res) {
 
 app.post("/register", function(req, res){
     const email = req.body.username;
-    const password = req.body.password;
+    const password = md5(req.body.password);
 
 
     User.findOne({email: email}, function(err, foundUser){
@@ -115,7 +90,7 @@ app.post("/login", function(req, res){
     User.findOne({email: req.body.username}, function(err, foundUser){
         if(!err){
             if (foundUser) {
-                if (foundUser.password === req.body.password) {
+                if (foundUser.password === md5(req.body.password)) {
                     res.render("secrets")
                 } else {
                     res.send("Incorrect password")
