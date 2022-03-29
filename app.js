@@ -1,7 +1,9 @@
 //jshint esversion:6
 
 require('dotenv').config()
-const md5 = require('md5');
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
@@ -58,43 +60,50 @@ app.get("/login", function(req, res) {
 
 app.post("/register", function(req, res){
     const email = req.body.username;
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
-
-    User.findOne({email: email}, function(err, foundUser){
-        if (!err) {
-            if (foundUser){
-                res.send("User already exists")
+    bcrypt.hash(password, saltRounds, function(err, hash) {
+        // Store hash in your password DB.
+        User.findOne({email: email}, function(err, foundUser){
+            if (!err) {
+                if (foundUser){
+                    res.send("User already exists")
+                } else {
+                    const newUser = new User({
+                        email: email,
+                        password: hash
+                    })
+                    newUser.save(function(err){
+                        if (!err) {
+                            res.render("secrets");
+                        } else {
+                            console.log("Cannot create user")
+                        }
+                    })
+                }
             } else {
-                const newUser = new User({
-                    email: email,
-                    password: password
-                })
-                newUser.save(function(err){
-                    if (!err) {
-                        res.render("secrets");
-                    } else {
-                        console.log("Cannot create user")
-                    }
-                })
-            }
-        } else {
-            console.log("Error finding user")
-        } 
-    })
+                console.log("Error finding user")
+            } 
+        })
+    });
 })
 
 /*--------Login user---------------*/
 
 app.post("/login", function(req, res){
+
+    
+
     User.findOne({email: req.body.username}, function(err, foundUser){
         if(!err){
             if (foundUser) {
-                if (foundUser.password === md5(req.body.password)) {
-                    res.render("secrets")
-                } else {
-                    res.send("Incorrect password")
-                }
+                bcrypt.compare(req.body.password, foundUser.password, function(err, result) {
+                    if (result === true) {
+                        res.render("secrets")
+                    } else {
+                        res.send("Incorrect password")
+                    }
+                })
             } else {
                 res.send("Account does not exist. Please create an account first");
             }
