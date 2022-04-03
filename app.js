@@ -1,13 +1,13 @@
 //jshint esversion:6
 
 require('dotenv').config()
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
-
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose")
 
 
 //instantiate app
@@ -23,6 +23,17 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.use(express.static("public"));
 
 
+//use express-session
+app.use(session({
+    secret: 'Our little secret.',
+    resave: false,
+    saveUninitialized: false,
+  }))
+
+//initialize passport and initialize passport session
+app.use(passport.initialize());
+app.use(passport.session());
+
 
 /*--------SETUP DATABASES---------------*/
 
@@ -32,12 +43,22 @@ mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true});
 //create user Schema
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String
+  password: String,
+  active: Boolean
 });
+
+//set up passport local mongoose - used to hash and salt password and save to the mongo db database
+userSchema.plugin(passportLocalMongoose);
 
 //create model for user
 const User = new mongoose.model("User", userSchema);
 
+//set up passport local mongoose to create a local login strategy
+passport.use(User.createStrategy());
+
+//set up passport to serialize and deserialize our user
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 
 
@@ -55,63 +76,50 @@ app.get("/login", function(req, res) {
     res.render("login.ejs");
 })
 
+//mavview pag authenticated si user
+app.get("/secrets", function(req, res){
+    if (req.isAuthenticated()){
+        res.render("secrets");
+    } else{
+        res.redirect("/login");
+    }
+});
+
+/*--------Logout user---------------*/
+app.get("/logout", function(req, res) {
+    req.logout();
+    res.redirect('/');
+});
+
 
 /*--------Register new user---------------*/
 
 app.post("/register", function(req, res){
-    const email = req.body.username;
-    const password = req.body.password;
-
-    bcrypt.hash(password, saltRounds, function(err, hash) {
-        // Store hash in your password DB.
-        User.findOne({email: email}, function(err, foundUser){
-            if (!err) {
-                if (foundUser){
-                    res.send("User already exists")
-                } else {
-                    const newUser = new User({
-                        email: email,
-                        password: hash
-                    })
-                    newUser.save(function(err){
-                        if (!err) {
-                            res.render("secrets");
-                        } else {
-                            console.log("Cannot create user")
-                        }
-                    })
-                }
-            } else {
-                console.log("Error finding user")
-            } 
-        })
-    });
-})
+   
+    User.register({username:req.body.username}, req.body.password, function(err, user) {
+        if (err) {
+            console.log(err);
+            res.redirect("/register");
+        } else {
+            passport.authenticate("local")(req, res, function(){
+                res.redirect("/secrets");
+                //hindi na res.render, kasi if logged in pa din yung session ng user, dapat mavview niya pa din yung secrets page. Before kasi, maviview mo lang yung secrets page via the register or login route, so need mo isetup yung /secrets route
+            });
+        }
+      
+      });
+});
 
 /*--------Login user---------------*/
 
-app.post("/login", function(req, res){
+app.post("/login", passport.authenticate("local",
+{
+    successRedirect: "/secrets",
+    failureRedirect: "/login"
+}
+));
 
-    
 
-    User.findOne({email: req.body.username}, function(err, foundUser){
-        if(!err){
-            if (foundUser) {
-                bcrypt.compare(req.body.password, foundUser.password, function(err, result) {
-                    if (result === true) {
-                        res.render("secrets")
-                    } else {
-                        res.send("Incorrect password")
-                    }
-                })
-            } else {
-                res.send("Account does not exist. Please create an account first");
-            }
-        } else {
-            res.send(err);
-        }
-    })
-})
 
 
 
